@@ -1,0 +1,297 @@
+#!/bin/bash
+# CPS393 F2021 Assignment 1 - LINUX BINGO
+# Group Members:
+# mhissa, Issa, Mohamed, 501046508, Section 7
+# hfawan, Awan, Hadi, 501054141, Section 8
+# ayalcin, Yalcin, Ayse, 500886985, Section 7
+# musyed, Syed, Muteeb, 500972883, Section 1
+
+
+declare -a arr
+declare -a listOfcalls
+declare -a call_detect
+RANDOM=0
+
+echoerr() { echo "$@" 1>&2; }
+
+
+
+input_file()
+{
+    # Check if file can be found if not error is thrown
+    if [[ ! -f $1 ]];
+    then
+                echoerr input file missing or unreadable
+                exit 1
+        fi
+}
+
+
+number_of_lines()
+{
+    # Checks number of lines	
+    local num_of_lines=$(cat $1 | wc -l)
+    if [[ ! $num_of_lines -eq 6 ]]
+    then
+        echoerr card format error
+        exit 2
+    fi
+}
+
+
+seed_line()
+{
+    # Checks if the seed line only contains digits
+    local line=$(head -n 1 $1)
+    if  [[ ! "$line" =~ ^[0-9]+$ ]]
+    then
+        echoerr seed line format error
+        exit 3
+    fi
+    RANDOM=$line # Makes RANDOM to be equal to the seed
+}
+
+
+card_format()
+{
+    # Checks if every line contains exactly 5 entries
+    while read -r line
+    do
+        local a=$(echo $line | wc -w)
+        if [[ ! "$a" -eq "5" ]]
+        then
+            echoerr card format error
+            exit 4
+        fi
+     done
+}
+
+
+into_arr()
+{
+    local i=0
+    local line
+    local col=0
+
+    # Ignore the first line containing the seed number
+
+    read line
+    while read -r line; do
+        for v in `echo $line`; do
+            local num=${v#0}
+	    local min=$(( 1+col*15 ))
+	    local max=$(( 15+col*15))
+	    if (( "$num" < "$min" )) || (( "$num" > "$max" )); then
+		if [ "$i" -ne 12 ]; then
+		   echoerr card format error
+		   exit 4
+		fi
+	    fi	
+            arr[$i]="$v "
+            i=$((i+1))
+            col=$((col+1))
+        done
+        col=0
+    done
+
+    # Reads entries into an array, and checks if it is in the write column 
+    # In this bingo game we know that there is 25 entries, so it would look like:
+    # arr = ( '0' '1' '2' '3' '4'
+    #         '5' '6' '7' '8' '9'	    
+    #         '10''11''12''13''14'
+    #	      '15''16''17''18''19'		
+    #         '20''21''22''23''24' )
+    
+    
+    # If middle entry is not 00, error thrown
+
+    if [[ ! "${arr[12]}" -eq "00" ]]
+    then
+        echoerr card format error
+        exit 4
+    fi
+    local mid="00"
+    unset arr[12]
+    arr[12]=$mid"m"
+}
+
+
+dupes_check() {
+   
+   # Checks for duplicates
+   for (( i=0; i<25; i++ ))
+   do
+       for ((j=0; j<25; j++ ))
+       do
+           if [[ ! $i -eq 12 ]] && [[ ! $j -eq 12 ]]
+	   then	
+               if [[ ! $i -eq $j ]] && [ ${arr[i]} -eq ${arr[j]} ]
+               then
+                    echoerr card format error
+                    exit 4
+              fi
+	   fi
+       done
+   done
+ 
+}
+
+
+initialize_detector(){
+    # Initializes an array with 75 elements to  0  
+    # This array is  used to indicate which numbers have been called
+    for (( i=0; i<75; i++ ))
+    do
+        call_detect[$i]=0
+    done
+}
+
+
+linux_call() {
+    local c=$(( 1 + $RANDOM % 75 ))
+    if [[ "${call_detect[(( $c-1 ))]}" -eq 0 ]]
+    then
+	# sets the element at the index of $c  call_detect to 1
+	# this means that it has been called
+	unset call_detect[$(( $c-1 ))]
+        call_detect[$(( $c-1 ))]=1
+        if [ $c -lt 10 ]
+        then
+	    c=0$c
+        fi
+        local end=${#listOfcalls[@]}
+        listOfcalls[$end]=$c
+	#adds call to the end of the list
+	for (( i=0; i<25; i++ ))
+        do	
+            if [[ "$c " == "${arr[i]}" ]]
+            then
+                local n=$c"m"
+                unset arr[i]
+                arr[i]="$n"
+		#replaces the number called with the number plus "m"
+            fi
+        done
+     else       
+ 	linux_call
+     fi
+}
+
+win_check() {
+
+    # In the comment inside the into_arr function, we can see that the 4 corners have
+    # the idicies of 0, 4, 20 and 24
+	
+    if [[ "${arr[0]}" == *"m"* ]] && [[ "${arr[4]}" == *"m"* ]] && [[ "${arr[20]}" == *"m"* ]] && [[ "${arr[24]}" == *"m"* ]]
+    then
+        echo "WINNER"
+            exit 0
+    fi
+
+    # In the comment inside the into_arr function, we can see that the indicies in a row 
+    # have differences of 5 between them
+    for i in 0 1 2 3 4
+    do
+        if [[ "${arr[$i]}" == *"m"* ]] && [[ "${arr[$(($i+5))]}" == *"m"* ]] && [[ "${arr[$(($i+10))]}" == *"m"* ]] && [[ "${arr[$(($i+15))]}" == *"m"* ]] && [[ "${arr[$(($i+20))]}" == *"m"* ]]
+        then
+            echo "WINNER"
+            exit 0
+        fi
+    done
+    # In the comment inside the into_arr function, we can see that the numbers in each row 
+    # start with indicies 0, 5, 10, 15 and 20, so we loop through those indicies and check
+    # the elements in the row 	
+    for i in 0 5 10 15 20
+    do
+        if [[ "${arr[$i]}" == *"m"* ]] && [[ "${arr[$(($i+1))]}" == *"m"* ]] && [[ "${arr[$(($i+2))]}" == *"m"* ]] && [[ "${arr[$(($i+3))]}" == *"m"* ]] && [[ "${arr[$(($i+4))]}" == *"m"* ]]
+        then
+            echo "WINNER" 
+            exit 0
+        fi
+    done
+}
+
+print_arr() {
+
+	# Prints array, but the element on a new line every time a line reaches 5 elements,
+	# puts a space between every element except for elements at the end of the line
+        local count=1
+        for (( i=0; i<25; i++ ))
+        do
+                if [ "$count" -eq 5 ]
+                then
+                        echo  "${arr[$i]} "
+                        count=0
+
+                elif [ $i -ne 4 ] && [ $i -ne 9 ] && [ $i -ne 14 ] && [ $i -ne 19 ] && [ $i -ne 24 ]
+                then
+                        printf "${arr[$i]} "
+                else
+                        printf "${arr[$i]}"
+                fi
+                count=$((count+1))
+        done
+}
+print_call_list() {
+
+    # Prints calls but with its corresponding Letter column
+    local letter_calls
+    for (( i=0; i<${#listOfcalls[*]}; i++))
+    do
+	num=${listOfcalls[$i]}
+	if (( "${num#0}" > 1 )) && (( "${num#0}" < 15 ))
+        then
+                letter_calls[i]="L"${listOfcalls[$i]}
+        fi
+	if (( "${num#0}" > 16 )) && (( "${num#0}" < 30 ))
+        then
+            letter_calls[i]="I"${listOfcalls[$i]}
+        fi
+	if (( "${num#0}" > 31 )) && (( "${num#0}" < 45 ))
+        then
+            letter_calls[i]="N"${listOfcalls[$i]}
+	fi        
+	if (( "${num#0}" > 46 )) && (( "${num#0}" < 60 ))
+        then
+            letter_calls[i]="U"${listOfcalls[$i]}
+        fi
+	if (( "${num#0}" > 61 )) && (( "${num#0}" < 75 ))
+	then
+            letter_calls[i]="X"${listOfcalls[$i]}
+        fi
+    done
+    echo "CALL LIST: " ${letter_calls[*]}
+        
+}
+main(){
+    # calls all the function needed
+    input_file $1
+    number_of_lines $1
+    seed_line $1
+    tail -5 $1 >tmp
+    card_format <tmp
+    rm tmp
+    into_arr <$1
+    dupes_check
+    initialize_detector
+
+    # reads user input untill they enter q
+    # refreshes the output at the beginning of each iteration
+    while [[ "$key" != "q" ]]
+    do
+	clear
+	print_call_list
+	echo " L   I   N   U   X "
+	print_arr
+    	win_check
+	linux_call
+	printf "Write any key to get a call or q to quit: "
+	read -s key
+    done
+    # Exits game when the while loop is broken with "q"
+    # or when win_check throws its exit
+    echo
+    exit 0 
+}
+
+main $1
